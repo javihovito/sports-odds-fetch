@@ -23,6 +23,7 @@ import sys
 import urllib.request
 import urllib.error
 import urllib.parse
+from datetime import datetime, timezone, timedelta
 
 # ============================================
 # DRAFTKINGS ENDPOINT CONFIGURATION
@@ -43,6 +44,7 @@ LEAGUES = {
 SUBCATEGORIES = {
     "nba": {
         "series-winner": "18082",
+        "game-lines": "4511",
     },
     # Discover these during their respective playoffs:
     # "nfl": { "series-winner": "XXXXX" },
@@ -86,6 +88,20 @@ def implied_probability(american: int) -> float:
     return 0.5
 
 
+def utc_to_local(utc_str: str) -> str:
+    """Convert DK UTC timestamp to the system's local timezone.
+    For CLI display only — JSON output keeps raw UTC for frontend conversion.
+    """
+    try:
+        clean = utc_str.split(".")[0]  # strip fractional seconds
+        dt_utc = datetime.strptime(clean, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+        dt_local = dt_utc.astimezone()
+        tz_name = dt_local.strftime("%Z")  # e.g. CDT, EDT, PST
+        return dt_local.strftime(f"%Y-%m-%d %I:%M%p {tz_name}").lstrip("0")
+    except Exception:
+        return utc_str
+
+
 def parse_dk_response(data: dict) -> list[dict]:
     """Parse a DraftKings API response into clean odds objects."""
     events = {e["id"]: e for e in data.get("events", [])}
@@ -112,7 +128,7 @@ def parse_dk_response(data: dict) -> list[dict]:
             participant = participant_map.get(pid, {})
             metadata = participant.get("metadata", {})
             american = parse_american_odds(sel["displayOdds"]["american"])
-            teams.append({
+            team_data = {
                 "name": sel["label"],
                 "abbreviation": metadata.get("shortName", ""),
                 "color": metadata.get("teamColor", ""),
@@ -123,13 +139,18 @@ def parse_dk_response(data: dict) -> list[dict]:
                     "implied_probability": round(implied_probability(american), 4),
                 },
                 "is_favorite": american < 0,
-            })
+            }
+            if "points" in sel:
+                team_data["points"] = sel["points"]
+            teams.append(team_data)
 
         teams.sort(key=lambda t: t["odds"]["american"])
+        start_utc = event.get("startEventDate", "")
         results.append({
             "event_id": event["id"],
             "name": event.get("name", ""),
-            "start_time": event.get("startEventDate", ""),
+            "start_time": start_utc,
+            "start_time_local": utc_to_local(start_utc),
             "status": event.get("status", ""),
             "market": market_name,
             "teams": teams,
@@ -179,13 +200,18 @@ def print_table(results: list[dict]):
 
     for r in results:
         print(f"\n  {r['name']}", file=sys.stderr)
-        print(f"  Start: {r['start_time'][:16].replace('T', ' ')} UTC  |  {r['status']}", file=sys.stderr)
+        time_display = r.get("start_time_local", r['start_time'][:16].replace('T', ' ') + " UTC")
+        print(f"  Start: {time_display}  |  {r['status']}", file=sys.stderr)
         print(f"  {'─'*50}", file=sys.stderr)
         for team in r["teams"]:
             odds = team["odds"]
             role = "FAV" if team["is_favorite"] else "DOG"
             prob = f"{odds['implied_probability']:.1%}"
-            print(f"    [{role}] {team['name']:<25} {odds['display']:>8}  ({prob})", file=sys.stderr)
+            pts = ""
+            if "points" in team:
+                p = team["points"]
+                pts = f"  ({'+' if p > 0 else ''}{p})"
+            print(f"    [{role}] {team['name']:<25} {odds['display']:>8}  ({prob}){pts}", file=sys.stderr)
 
     print(f"\n{'='*70}\n", file=sys.stderr)
 
