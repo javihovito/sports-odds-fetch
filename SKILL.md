@@ -44,6 +44,29 @@ To add a new sport/market: open the DraftKings page in Chrome DevTools → Netwo
 - **stderr:** Human-readable table with team names, odds, and implied probabilities
 - **stdout:** Clean JSON array — pipe this to your app, save to file, or parse in code
 
+## Line Shopping and +EV (multi-book)
+
+`--source oddsapi` pulls every US book from The Odds API (works from cloud IPs, unlike DraftKings direct). For each outcome it reports the best price and book, the no-vig fair line, and EV% of the best price against that fair line.
+
+```bash
+export ODDS_API_KEY=...   # free key: https://the-odds-api.com (500 requests/month)
+
+# Best price per side across books, game lines
+python3 {skill_directory}/scripts/fetch-odds.py --source oddsapi --sport nfl --market game-lines
+
+# Only +EV prices at books you can bet, Pinnacle as the fair line
+python3 {skill_directory}/scripts/fetch-odds.py --source oddsapi --sport nba --sharp pinnacle \
+  --books draftkings,fanduel,betmgm --min-ev 1
+```
+
+- Markets: `game-lines` (h2h,spreads,totals), `moneyline`, `spreads`, `totals`, `futures`.
+- Sports: nba, nfl, nhl, mlb, ncaaf, ncaab.
+- Fair line: median no-vig price across books, or `--sharp <book>` (adds the `eu` region for Pinnacle).
+- Spreads/totals compare only books at the most common line, so points match.
+- Each call costs one request per market per region; remaining quota prints to stderr.
+
+DraftKings output now also includes `fair_probability` and `fair_american` (vig removed).
+
 ## When to Use
 
 - Building a playoff pick'em or bracket pool app

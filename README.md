@@ -57,6 +57,29 @@ python3 scripts/fetch-odds.py --file saved-response.json
 python3 scripts/fetch-odds.py --sport nba --market series-winner --show-url
 ```
 
+## Line Shopping and +EV (multi-book)
+
+`--source oddsapi` pulls every US book from The Odds API (works from cloud IPs, unlike DraftKings direct). For each outcome it reports the best price and book, the no-vig fair line, and EV% of the best price against that fair line.
+
+```bash
+export ODDS_API_KEY=...   # free key: https://the-odds-api.com (500 requests/month)
+
+# Best price per side across books, game lines
+python3 scripts/fetch-odds.py --source oddsapi --sport nfl --market game-lines
+
+# Only +EV prices at books you can bet, Pinnacle as the fair line
+python3 scripts/fetch-odds.py --source oddsapi --sport nba --sharp pinnacle \
+  --books draftkings,fanduel,betmgm --min-ev 1
+```
+
+- Markets: `game-lines` (h2h,spreads,totals), `moneyline`, `spreads`, `totals`, `futures`.
+- Sports: nba, nfl, nhl, mlb, ncaaf, ncaab.
+- Fair line: median no-vig price across books, or `--sharp <book>` (adds the `eu` region for Pinnacle).
+- Spreads/totals compare only books at the most common line, so points match.
+- Each call costs one request per market per region; remaining quota prints to stderr.
+
+DraftKings output now also includes `fair_probability` and `fair_american` (vig removed).
+
 ## Supported Markets
 
 | Sport | Market | Status |
